@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write  # for sigstore OIDC
 
     steps:
       - uses: actions/checkout@v4
@@ -41,23 +42,14 @@ jobs:
       - name: Install model-signing from source
         run: pip install .
 
-      - name: Install conformance suite dependencies
-        run: pip install pytest pytest-json-report
-
-      - name: Checkout model-signing-conformance
-        uses: actions/checkout@v4
+      - uses: sampras343/model-signing-conformance@main
         with:
-          repository: sampras343/model-signing-conformance
-          path: conformance-suite
-
-      - name: Run conformance suite
-        run: python conformance-suite/action.py
-        env:
-          INPUT_ENTRYPOINT: ${{ github.workspace }}/test/conformance/python-conformance
+          entrypoint: ${{ github.workspace }}/test/conformance/python-conformance
+          skip-result-upload: 'true'
 
       - name: Upload conformance report
+        if: ${{ always() && github.ref == 'refs/heads/main' }}
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: conformance-report
           path: conformance-report.json

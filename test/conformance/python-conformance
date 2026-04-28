@@ -20,13 +20,17 @@ This script is used as the --entrypoint for the model-signing-conformance
 test suite.
 
 Usage:
-    python-conformance sign-model --method key|certificate --model-path DIR \\
-                       --output-bundle FILE [--private-key PEM] [--signing-cert PEM] \\
-                       [--cert-chain PEM...] [--ignore-paths PATH...]
+    python-conformance sign-model --method key|certificate|sigstore \\
+                       --model-path DIR --output-bundle FILE \\
+                       [--private-key PEM] [--signing-cert PEM] \\
+                       [--cert-chain PEM...] [--ignore-paths PATH...] \\
+                       [--identity-token TOKEN] [--use-staging]
 
-    python-conformance verify-model --method key|certificate --model-path DIR \\
-                       --bundle FILE [--public-key PEM] [--cert-chain PEM...] \\
-                       [--ignore-paths PATH...] [--ignore-unsigned-files]
+    python-conformance verify-model --method key|certificate|sigstore \\
+                       --model-path DIR --bundle FILE \\
+                       [--public-key PEM] [--cert-chain PEM...] \\
+                       [--ignore-paths PATH...] [--ignore-unsigned-files] \\
+                       [--identity ID] [--identity-provider URL] [--use-staging]
 
 The adapter calls `python -m model_signing` (or MODEL_SIGNING_PYTHON env var).
 """
@@ -45,87 +49,79 @@ def _python() -> str:
 
 
 def cmd_sign(args: argparse.Namespace) -> int:
-    method = args.method
-    model_path = args.model_path
-    output_bundle = args.output_bundle
+    cmd = [_python(), "-m", "model_signing", "sign", args.method,
+           "--signature", args.output_bundle]
 
-    cmd = [_python(), "-m", "model_signing", "sign", method,
-           "--signature", output_bundle]
-
-    if method == "key":
+    if args.method == "key":
         if not args.private_key:
             print("ERROR: --private-key required for method=key", file=sys.stderr)
             return 2
-        cmd += ["--private_key", args.private_key]
+        cmd += ["--private-key", args.private_key]
 
-    elif method == "certificate":
+    elif args.method == "certificate":
         if not args.private_key:
             print("ERROR: --private-key required for method=certificate", file=sys.stderr)
             return 2
         if not args.signing_cert:
             print("ERROR: --signing-cert required for method=certificate", file=sys.stderr)
             return 2
-        cmd += ["--private_key", args.private_key]
-        cmd += ["--signing_certificate", args.signing_cert]
+        cmd += ["--private-key", args.private_key]
+        cmd += ["--signing-certificate", args.signing_cert]
         for chain_cert in (args.cert_chain or []):
-            cmd += ["--certificate_chain", chain_cert]
+            cmd += ["--certificate-chain", chain_cert]
 
-    elif method == "sigstore":
+    elif args.method == "sigstore":
         if args.identity_token:
-            cmd += ["--identity_token", args.identity_token]
+            cmd += ["--identity-token", args.identity_token]
         if args.use_staging:
-            cmd += ["--use_staging"]
+            cmd += ["--use-staging"]
 
     else:
-        print(f"ERROR: Unknown method: {method}", file=sys.stderr)
+        print(f"ERROR: Unknown method: {args.method}", file=sys.stderr)
         return 2
 
     for ignore_path in (args.ignore_paths or []):
         cmd += ["--ignore-paths", ignore_path]
 
-    cmd += [model_path]
+    cmd += [args.model_path]
 
     result = subprocess.run(cmd)
     return result.returncode
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    method = args.method
-    model_path = args.model_path
-    bundle = args.bundle
+    cmd = [_python(), "-m", "model_signing", "verify", args.method,
+           "--signature", args.bundle]
 
-    cmd = [_python(), "-m", "model_signing", "verify", method,
-           "--signature", bundle]
-
-    if method == "key":
+    if args.method == "key":
         if not args.public_key:
             print("ERROR: --public-key required for method=key", file=sys.stderr)
             return 2
-        cmd += ["--public_key", args.public_key]
+        cmd += ["--public-key", args.public_key]
 
-    elif method == "certificate":
+    elif args.method == "certificate":
         for chain_cert in (args.cert_chain or []):
-            cmd += ["--certificate_chain", chain_cert]
+            cmd += ["--certificate-chain", chain_cert]
 
-    elif method == "sigstore":
+    elif args.method == "sigstore":
         if args.identity:
             cmd += ["--identity", args.identity]
         if args.identity_provider:
-            cmd += ["--identity_provider", args.identity_provider]
+            cmd += ["--identity-provider", args.identity_provider]
         if args.use_staging:
-            cmd += ["--use_staging"]
+            cmd += ["--use-staging"]
 
     else:
-        print(f"ERROR: Unknown method: {method}", file=sys.stderr)
+        print(f"ERROR: Unknown method: {args.method}", file=sys.stderr)
         return 2
 
     for ignore_path in (args.ignore_paths or []):
         cmd += ["--ignore-paths", ignore_path]
 
     if args.ignore_unsigned_files:
-        cmd += ["--ignore_unsigned_files"]
+        cmd += ["--ignore-unsigned-files"]
 
-    cmd += [model_path]
+    cmd += [args.model_path]
 
     result = subprocess.run(cmd)
     return result.returncode
@@ -168,11 +164,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "sign-model":
-        args.private_key = args.private_key
-        args.signing_cert = args.signing_cert
         return cmd_sign(args)
     elif args.command == "verify-model":
-        args.public_key = args.public_key
         return cmd_verify(args)
     return 1
 
