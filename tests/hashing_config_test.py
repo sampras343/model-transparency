@@ -1,4 +1,9 @@
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+
 from model_signing import hashing
+from model_signing import signing
+from model_signing import verifying
 
 
 def test_set_ignored_paths_relative_to_model(tmp_path, monkeypatch):
@@ -107,3 +112,76 @@ def test_blake3_file_serialization_with_max_workers(tmp_path):
     # All manifests should be equal
     assert manifest1 == manifest2
     assert manifest1 == manifest3
+
+
+def _make_key_pair(tmp_path):
+    key = ec.generate_private_key(ec.SECP256R1())
+    priv = tmp_path / "test.key"
+    priv.write_bytes(key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption()))
+    pub = tmp_path / "test.pub"
+    pub.write_bytes(key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo))
+    return priv, pub
+
+
+def test_blake2_sign_verify_roundtrip(tmp_path):
+    """BLAKE2 sign-then-verify must work with auto-guessed config.
+
+    The hasher stores digest_name='blake2b' (the spec-canonical name)
+    in the bundle, and the verifier must accept it when reconstructing
+    the hashing config.
+    """
+    priv, pub = _make_key_pair(tmp_path)
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "data.txt").write_text("blake2 round-trip test")
+    sig = tmp_path / "model.sig"
+
+    signing.Config().use_elliptic_key_signer(
+        private_key=str(priv)
+    ).set_hashing_config(
+        hashing.Config().use_file_serialization(hashing_algorithm="blake2")
+    ).sign(model, sig)
+
+    verifying.Config().use_elliptic_key_verifier(
+        public_key=str(pub)
+    ).verify(model, sig)
+
+
+def test_blake2b_sign_verify_roundtrip(tmp_path):
+    """Signing with the canonical name 'blake2b' must also round-trip."""
+    priv, pub = _make_key_pair(tmp_path)
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "data.txt").write_text("blake2b round-trip test")
+    sig = tmp_path / "model.sig"
+
+    signing.Config().use_elliptic_key_signer(
+        private_key=str(priv)
+    ).set_hashing_config(
+        hashing.Config().use_file_serialization(hashing_algorithm="blake2b")
+    ).sign(model, sig)
+
+    verifying.Config().use_elliptic_key_verifier(
+        public_key=str(pub)
+    ).verify(model, sig)
+
+
+def test_blake2_and_blake2b_produce_same_hashes(tmp_path):
+    """'blake2' and 'blake2b' are aliases for the same algorithm."""
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "data.txt").write_text("alias test")
+
+    m1 = hashing.Config().use_file_serialization(
+        hashing_algorithm="blake2"
+    ).hash(model)
+    m2 = hashing.Config().use_file_serialization(
+        hashing_algorithm="blake2b"
+    ).hash(model)
+
+    assert m1 == m2

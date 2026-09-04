@@ -183,7 +183,9 @@ class Config:
 
     def _build_stream_hasher(
         self,
-        hashing_algorithm: Literal["sha256", "blake2", "blake3"] = "sha256",
+        hashing_algorithm: Literal[
+            "sha256", "blake2", "blake2b", "blake3"
+        ] = "sha256",
     ) -> hashing.StreamingHashEngine:
         """Builds a streaming hasher from a constant string.
 
@@ -196,7 +198,7 @@ class Config:
         match hashing_algorithm:
             case "sha256":
                 return memory.SHA256()
-            case "blake2":
+            case "blake2" | "blake2b":
                 return memory.BLAKE2()
             case "blake3":
                 return memory.BLAKE3()
@@ -207,7 +209,7 @@ class Config:
 
     def _build_file_hasher_factory(
         self,
-        hashing_algorithm: Literal["sha256", "blake2", "blake3"] = "sha256",
+        hashing_algorithm: Literal["sha256", "blake2", "blake2b", "blake3"] = "sha256",
         chunk_size: int = 1048576,
         max_workers: int | None = None,
     ) -> Callable[[pathlib.Path], io.FileHasher]:
@@ -238,7 +240,7 @@ class Config:
 
     def _build_sharded_file_hasher_factory(
         self,
-        hashing_algorithm: Literal["sha256", "blake2"] = "sha256",
+        hashing_algorithm: Literal["sha256", "blake2", "blake2b"] = "sha256",
         chunk_size: int = 1048576,
         shard_size: int = 1_000_000_000,
     ) -> Callable[[pathlib.Path, int, int], io.ShardedFileHasher]:
@@ -277,7 +279,7 @@ class Config:
     def use_file_serialization(
         self,
         *,
-        hashing_algorithm: Literal["sha256", "blake2", "blake3"] = "sha256",
+        hashing_algorithm: Literal["sha256", "blake2", "blake2b", "blake3"] = "sha256",
         chunk_size: int = 1048576,
         max_workers: int | None = None,
         allow_symlinks: bool = False,
@@ -321,7 +323,7 @@ class Config:
     def use_shard_serialization(
         self,
         *,
-        hashing_algorithm: Literal["sha256", "blake2", "blake3"] = "sha256",
+        hashing_algorithm: Literal["sha256", "blake2", "blake2b", "blake3"] = "sha256",
         chunk_size: int = 1048576,
         shard_size: int = 1_000_000_000,
         max_workers: int | None = None,
