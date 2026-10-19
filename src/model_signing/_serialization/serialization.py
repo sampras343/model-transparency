@@ -25,6 +25,9 @@ from model_signing import manifest
 
 logger = logging.getLogger(__name__)
 
+# Windows error code for symlink cycles; no stdlib constant exists.
+_WINERROR_CANT_RESOLVE_FILENAME = 1921
+
 
 def check_file_or_directory(
     path: pathlib.Path, *, allow_symlinks: bool = False
@@ -83,12 +86,14 @@ def check_symlink(path: pathlib.Path, model_path: pathlib.Path) -> bool:
         logger.warning("Symlink cycle detected: '%s'", path)
         return False
     except OSError as err:
-        if err.errno == errno.ELOOP:
+        # Windows reports ERROR_CANT_RESOLVE_FILENAME rather than ELOOP.
+        if err.errno == errno.ELOOP or getattr(
+            err, "winerror", None
+        ) == _WINERROR_CANT_RESOLVE_FILENAME:
             logger.warning("Symlink cycle detected: '%s'", path)
             return False
-        # A link that cannot be resolved is not a cycle. Skipping it would
-        # leave it out of the manifest at signing and leave it unreported at
-        # verification, so it must fail like any other unusable path.
+        # Other resolution failures must not silently omit an unusable link
+        # from signing or verification.
         raise ValueError(
             f"Cannot use '{path}' because it is a broken symlink."
         ) from err
@@ -103,6 +108,12 @@ def check_symlink(path: pathlib.Path, model_path: pathlib.Path) -> bool:
             target,
             model_root,
         )
+
+    # An ancestor-directory link resolves successfully but would make a
+    # recursive traversal cycle (OMS v1.0 6.1.1).
+    if path.parent.resolve().is_relative_to(target):
+        logger.warning("Symlink cycle detected: '%s'", path)
+        return False
 
     return True
 
